@@ -10,7 +10,7 @@ from ape.api.address import BaseAddress
 from ape.api.networks import LOCAL_NETWORK_NAME
 from ape.contracts import ContractContainer
 from ape.exceptions import AccountsError, SignatureError
-from ape.logging import logger
+from ape.logging import LogLevel, logger
 from ape.types import AddressType, SignableMessage, TransactionSignature
 from ape.utils import abstractmethod, cached_property
 from eth_keyfile import create_keyfile_json, decode_keyfile_json
@@ -85,7 +85,9 @@ class StarknetAccountContracts(AccountContainerAPI, StarknetBase):
 
     @property
     def _key_file_paths(self) -> Iterator[Path]:
-        return self.data_folder.glob("*.json")
+        for path in self.data_folder.glob("*.json"):
+            if path.stem not in ("deployments_map",):
+                yield path
 
     @property
     def aliases(self) -> Iterator[str]:
@@ -371,6 +373,24 @@ class BaseStarknetAccount(AccountAPI, StarknetBase):
         return self.provider.send_transaction(txn)
 
     def prepare_transaction(self, txn: TransactionAPI) -> TransactionAPI:
+        self._prepare_transaction(txn)
+        if txn.max_fee is None:
+            # NOTE: Signature cannot be None when estimating fees.
+            txn.signature = self.sign_transaction(txn)
+            txn.max_fee = self.get_fee_estimate(txn)
+
+        txn.signature = self.sign_transaction(txn)
+        return txn
+
+    def get_fee_estimate(self, txn: TransactionAPI):
+        # Estimated fee are not enough to set max_fee.
+        # We need to bump the value to cover most of usages, in the same way it's done there:
+        # - https://github.com/software-mansion/starknet.py/blob/bd2e51e/starknet_py/contract.py#L221 (x1.5)  # noqa
+        # - https://github.com/0xs34n/starknet.js/blob/41eea22/src/utils/stark.ts#L53 (x1.1)
+        estimate_fee = self.provider.estimate_gas_cost(txn)
+        return int(estimate_fee * 1.1)
+
+    def _prepare_transaction(self, txn: TransactionAPI):
         execute_abi = self.execute_abi
         if not execute_abi:
             raise AccountsError(
@@ -396,8 +416,6 @@ class BaseStarknetAccount(AccountAPI, StarknetBase):
         txn.sender = None
         txn.original_method_abi = txn.method_abi
         txn.method_abi = execute_abi
-        txn.signature = self.sign_transaction(txn)
-        return txn
 
     def sign_transaction(self, txn: TransactionAPI) -> TransactionSignature:
         if not isinstance(txn, InvokeFunctionTransaction):
@@ -550,6 +568,28 @@ class StarknetKeyfileAccount(BaseStarknetAccount):
     def alias(self) -> Optional[str]:
         return self.key_file_path.stem
 
+    def prepare_transaction(self, txn: TransactionAPI) -> TransactionAPI:
+        self._prepare_transaction(txn)
+        do_relock = False
+        if not txn.max_fee:
+            if self.locked:
+                # Unlock to prevent multiple prompts for signing transaction.
+                original_level = logger.level
+                logger.set_level(LogLevel.ERROR)
+                self.set_autosign(True)
+                logger.set_level(original_level)
+
+            txn.signature = self.sign_transaction(txn)
+            txn.max_fee = self.get_fee_estimate(txn)
+
+        txn.signature = self.sign_transaction(txn)
+
+        if do_relock:
+            self.locked = True
+            self.set_autosign(False)
+
+        return txn
+
     def get_contract_type(self) -> ContractType:
         return OPEN_ZEPPELIN_ACCOUNT_CONTRACT_TYPE
 
@@ -645,7 +685,7 @@ class StarknetKeyfileAccount(BaseStarknetAccount):
 
     def unlock(self, passphrase: Optional[str] = None):
         passphrase = passphrase or self._get_passphrase_from_prompt(
-            f"Enter passphrase to permanently unlock '{self.alias}'"
+            f"Enter passphrase to unlock '{self.alias}'"
         )
         self._get_key(passphrase=passphrase)
         self.locked = False

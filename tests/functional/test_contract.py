@@ -208,3 +208,13 @@ def test_view_call_uint256s_array_outputs(contract):
 def test_unable_to_afford_transaction(contract, account, provider):
     with pytest.raises(OutOfGasError):
         contract.increase_balance(account.address, 1, sender=account, max_fee=1)
+
+
+def test_invocation_when_paying_fees(contract, account):
+    receipt = contract.get_uint256s(sender=account)
+    assert receipt.actual_fee > 0
+
+
+def test_invocation_when_not_paying_fees(contract, account):
+    receipt = contract.get_uint256s(sender=account, max_fee=0)
+    assert receipt.actual_fee == 0

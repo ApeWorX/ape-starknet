@@ -52,7 +52,6 @@ class StarknetProvider(SubprocessProvider, ProviderAPI, StarknetBase):
     # Gets set when 'connect()' is called.
     client: Optional[StarknetClient] = None
     token_manager: TokenManager = TokenManager()
-    default_gas_cost: int = 0
     cached_code: Dict[int, Dict] = {}
 
     @property
@@ -161,8 +160,9 @@ class StarknetProvider(SubprocessProvider, ProviderAPI, StarknetBase):
 
     @handle_client_errors
     def estimate_gas_cost(self, txn: TransactionAPI) -> int:
-        if self.network.name == LOCAL_NETWORK_NAME:
-            return self.default_gas_cost
+        # Already computed, it's the case when calling as_transaction() with max_fee not set
+        if txn.max_fee:
+            return txn.max_fee
 
         if not isinstance(txn, StarknetTransaction):
             raise StarknetEcosystemError(
@@ -170,11 +170,10 @@ class StarknetProvider(SubprocessProvider, ProviderAPI, StarknetBase):
                 "using Starknet provider."
             )
 
-        starknet_object = txn.as_starknet_object()
-
         if not self.client:
             raise ProviderNotConnectedError()
 
+        starknet_object = txn.as_starknet_object()
         return self.client.estimate_fee_sync(starknet_object)
 
     @property
@@ -312,11 +311,7 @@ class StarknetProvider(SubprocessProvider, ProviderAPI, StarknetBase):
     ) -> Iterator[ContractLog]:
         raise NotImplementedError("TODO")
 
-    @handle_client_errors
     def prepare_transaction(self, txn: TransactionAPI) -> TransactionAPI:
-        if txn.type == TransactionType.INVOKE_FUNCTION and not txn.max_fee:
-            txn.max_fee = self.estimate_gas_cost(txn)
-
         return txn
 
     def set_timestamp(self, new_timestamp: int):
