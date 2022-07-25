@@ -12,7 +12,7 @@ from hexbytes import HexBytes
 from starknet_py.constants import OZ_PROXY_STORAGE_KEY
 from starknet_py.net.models.address import parse_address
 from starknet_py.net.models.chains import StarknetChainId
-from starknet_py.utils.data_transformer import DataTransformer
+from starknet_py.utils.data_transformer.data_transformer import CairoSerializer
 from starkware.starknet.definitions.fields import ContractAddressSalt
 from starkware.starknet.definitions.transaction_type import TransactionType
 from starkware.starknet.public.abi import get_selector_from_name
@@ -27,6 +27,7 @@ from ape_starknet.transactions import (
     DeployTransaction,
     InvocationReceipt,
     InvokeFunctionTransaction,
+    StarknetReceipt,
     StarknetTransaction,
 )
 from ape_starknet.utils import to_checksum_address
@@ -100,11 +101,10 @@ class Starknet(EcosystemAPI, StarknetBase):
         full_abi = [
             a.dict() for a in (abi.contract_type.abi if abi.contract_type is not None else [abi])
         ]
-        id_manager = identifier_manager_from_abi(full_abi)
-        transformer = DataTransformer(abi.dict(), id_manager)
+        transformer = CairoSerializer(identifier_manager_from_abi(full_abi))
 
         raw_data = [self.encode_primitive_value(v) for v in raw_data]
-        decoded = transformer.to_python(raw_data)
+        decoded = transformer.to_python(abi.dict()["outputs"], raw_data)
 
         # Keep only the expected data instead of a 1-item array
         if len(abi.outputs) == 1 or (
@@ -121,8 +121,7 @@ class Starknet(EcosystemAPI, StarknetBase):
         call_args: Union[List, Tuple],
     ) -> List:
         full_abi = [abi.dict() if hasattr(abi, "dict") else abi for abi in full_abi]
-        id_manager = identifier_manager_from_abi(full_abi)
-        transformer = DataTransformer(method_abi.dict(), id_manager)
+        transformer = CairoSerializer(identifier_manager_from_abi(full_abi))
         pre_encoded_args: List[Any] = []
         index = 0
         last_index = min(len(method_abi.inputs), len(call_args)) - 1
@@ -158,8 +157,8 @@ class Starknet(EcosystemAPI, StarknetBase):
 
             index += 1
 
-        encoded_calldata, _ = transformer.from_python(*pre_encoded_args)
-        return encoded_calldata
+        calldata, _ = transformer.from_python(method_abi.dict()["inputs"], *pre_encoded_args)
+        return calldata
 
     def _pre_encode_value(self, value: Any) -> Any:
         if isinstance(value, dict):
@@ -201,16 +200,16 @@ class Starknet(EcosystemAPI, StarknetBase):
         return value
 
     def decode_receipt(self, data: dict) -> ReceiptAPI:
-        txn_type = TransactionType(data["type"])
-        receipt_cls: Union[Type[ContractDeclaration], Type[DeployReceipt], Type[InvocationReceipt]]
-        if txn_type == TransactionType.INVOKE_FUNCTION:
+        txn_type = data["call_type"]
+        receipt_cls: Type[StarknetReceipt]
+        if txn_type == "CALL":
             receipt_cls = InvocationReceipt
-        elif txn_type == TransactionType.DEPLOY:
+        elif txn_type == "DEPLOY":
             receipt_cls = DeployReceipt
-        elif txn_type == TransactionType.DECLARE:
+        elif txn_type == "DECLARE":
             receipt_cls = ContractDeclaration
         else:
-            raise ValueError(f"Unable to handle contract type '{txn_type.value}'.")
+            raise ValueError(f"Unable to handle contract type {txn_type!r}.")
 
         receipt = receipt_cls.parse_obj(data)
 
