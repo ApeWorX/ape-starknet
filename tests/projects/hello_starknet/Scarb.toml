@@ -1,0 +1,12 @@
+[package]
+name = "argent"
+version = "0.1.0"
+
+[target]
+[[target.starknet-contract]]
+sierra = true
+casm = true
+casm-add-pythonic-hints = true
+
+[dependencies]
+starknet = ">=2.6.3"
