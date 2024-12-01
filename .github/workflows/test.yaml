@@ -61,12 +61,27 @@ jobs:
           # Create directory for starknet-devnet
           mkdir -p $HOME/.local/bin
           
-          # Download and extract starknet-devnet based on OS
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            curl -sSfL https://github.com/0xSpaceShard/starknet-devnet-rs/releases/download/v0.2.3/starknet-devnet-linux.tar.gz | tar -xz -C $HOME/.local/bin
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            curl -sSfL https://github.com/0xSpaceShard/starknet-devnet-rs/releases/download/v0.2.3/starknet-devnet-macos.tar.gz | tar -xz -C $HOME/.local/bin
+          # Determine OS and architecture
+          ARCH=$(uname -m)
+          OS=$(uname -s)
+          
+          # Set the appropriate filename based on OS and architecture
+          if [ "$OS" = "Linux" ]; then
+            if [ "$ARCH" = "x86_64" ]; then
+              FILENAME="starknet-devnet-x86_64-unknown-linux-gnu.tar.gz"
+            elif [ "$ARCH" = "aarch64" ]; then
+              FILENAME="starknet-devnet-aarch64-unknown-linux-gnu.tar.gz"
+            fi
+          elif [ "$OS" = "Darwin" ]; then
+            if [ "$ARCH" = "x86_64" ]; then
+              FILENAME="starknet-devnet-x86_64-apple-darwin.tar.gz"
+            elif [ "$ARCH" = "arm64" ]; then
+              FILENAME="starknet-devnet-aarch64-apple-darwin.tar.gz"
+            fi
           fi
+          
+          # Download and extract the appropriate version
+          curl -sSfL "https://github.com/0xSpaceShard/starknet-devnet-rs/releases/download/v0.2.3/$FILENAME" | tar -xz -C $HOME/.local/bin
           
           # Make executable
           chmod +x $HOME/.local/bin/starknet-devnet
