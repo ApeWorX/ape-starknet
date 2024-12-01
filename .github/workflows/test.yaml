@@ -1,11 +1,8 @@
-on: ["push", "pull_request"]
-
 name: Test
 
+on: ["push", "pull_request"]
+
 concurrency:
-  # Cancel older, in-progress jobs from the same PR, same workflow.
-  # use run_id if the job is triggered by a push to ensure
-  # push-triggered jobs to not get canceled.
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
@@ -43,8 +40,8 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latesst]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.9", "3.10"]
 
     env:
       GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,6 +55,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Install starknet-devnet
+        run: |
+          # Create directory for starknet-devnet
+          mkdir -p $HOME/.local/bin
+          
+          # Download and extract starknet-devnet based on OS
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            curl -sSfL https://github.com/0xSpaceShard/starknet-devnet-rs/releases/download/v0.2.3/starknet-devnet-linux.tar.gz | tar -xz -C $HOME/.local/bin
+          elif [ "${{ runner.os }}" == "macOS" ]; then
+            curl -sSfL https://github.com/0xSpaceShard/starknet-devnet-rs/releases/download/v0.2.3/starknet-devnet-macos.tar.gz | tar -xz -C $HOME/.local/bin
+          fi
+          
+          # Make executable
+          chmod +x $HOME/.local/bin/starknet-devnet
+          
+          # Add to PATH
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          
+          # Verify installation
+          starknet-devnet --version
 
       - name: Install Dependencies
         run: |

@@ -73,7 +73,7 @@ setup(
         "starknet_py>=0.24.3,<0.25",
         "psutil",
     ],
-    python_requires=">=3.9,<4",
+    python_requires=">=3.9,<3.11",
     extras_require=extras_require,
     py_modules=["ape_starknet"],
     license="Apache-2.0",
@@ -91,7 +91,5 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
     ],
 )
